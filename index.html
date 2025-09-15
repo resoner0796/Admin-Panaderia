@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración - El Buen Pan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f3f0;
+            color: #4a2a1a;
+        }
+        .content-section {
+            display: none;
+        }
+        .content-section.active {
+            display: block;
+        }
+    </style>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, orderBy, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables
+        window.app = null;
+        window.db = null;
+        window.auth = null;
+        window.userId = null;
+        window.products = [];
+
+        // Firebase configuration
+        const firebaseConfig = {
+          apiKey: "AIzaSyAhxUAUO4Z0klgk_Fcx2uoTbSOIpSXEvqk",
+          authDomain: "panaderia-c15f7.firebaseapp.com",
+          projectId: "panaderia-c15f7",
+          storageBucket: "panaderia-c15f7.firebasestorage.app",
+          messagingSenderId: "200423925424",
+          appId: "1:200423925424:web:84148451383055c930fd75"
+        };
+        const appId = firebaseConfig.appId;
+
+        // Renders the orders table
+        function renderOrders(orders) {
+            const ordersTableBody = document.getElementById('ordersTableBody');
+            if (!ordersTableBody) return;
+            ordersTableBody.innerHTML = '';
+            if (orders.length === 0) {
+                ordersTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500">No hay pedidos registrados.</td></tr>`;
+                return;
+            }
+            orders.forEach(order => {
+                const orderDate = order.timestamp.toDate().toLocaleString();
+                const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
+                const row = `
+                    <tr class="border-b">
+                        <td class="p-4">${order.folio}</td>
+                        <td class="p-4">${orderDate}</td>
+                        <td class="p-4">${itemsList}</td>
+                        <td class="p-4 font-bold">$${order.total.toFixed(2)}</td>
+                    </tr>
+                `;
+                ordersTableBody.innerHTML += row;
+            });
+        }
+        
+        // Renders the products table for management
+        function renderProducts(products) {
+            const productsTableBody = document.getElementById('productsTableBody');
+            if (!productsTableBody) return;
+            productsTableBody.innerHTML = '';
+            if (products.length === 0) {
+                productsTableBody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500">No hay productos registrados.</td></tr>`;
+                return;
+            }
+            products.forEach(product => {
+                const row = `
+                    <tr class="border-b">
+                        <td class="p-4">${product.name}</td>
+                        <td class="p-4">$${product.price.toFixed(2)}</td>
+                        <td class="p-4 truncate">${product.description}</td>
+                        <td class="p-4 flex space-x-2">
+                            <button onclick="editProduct('${product.id}')" class="bg-yellow-500 text-white p-2 rounded-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
+                                  <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <button onclick="deleteProduct('${product.id}')" class="bg-red-500 text-white p-2 rounded-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                productsTableBody.innerHTML += row;
+            });
+        }
+        
+        // Renders the clients table
+        function renderClients(clients) {
+            const clientsTableBody = document.getElementById('clientsTableBody');
+            if (!clientsTableBody) return;
+            clientsTableBody.innerHTML = '';
+            if (clients.length === 0) {
+                clientsTableBody.innerHTML = `<tr><td colspan="3" class="py-4 text-center text-gray-500">No hay clientes registrados.</td></tr>`;
+                return;
+            }
+            clients.forEach(client => {
+                const row = `
+                    <tr class="border-b">
+                        <td class="p-4">${client.name}</td>
+                        <td class="p-4">${client.email}</td>
+                        <td class="p-4">${client.phone}</td>
+                    </tr>
+                `;
+                clientsTableBody.innerHTML += row;
+            });
+        }
+
+        window.editProduct = (productId) => {
+            const product = window.products.find(p => p.id === productId);
+            if (!product) return;
+            document.getElementById('productFormTitle').textContent = 'Editar Producto';
+            document.getElementById('productId').value = product.id;
+            document.getElementById('productName').value = product.name;
+            document.getElementById('productPrice').value = product.price;
+            document.getElementById('productDescription').value = product.description;
+            document.getElementById('productImage').value = product.image;
+        };
+
+        window.deleteProduct = async (productId) => {
+            if (!confirm('¿Estás seguro de que quieres eliminar este producto?')) return;
+            try {
+                await deleteDoc(doc(window.db, 'artifacts', appId, 'public', 'data', 'products', productId));
+                alert('Producto eliminado con éxito.');
+            } catch (e) {
+                alert('Error al eliminar el producto.');
+                console.error("Error removing document: ", e);
+            }
+        };
+
+        // Firestore listeners
+        let unsubscribeOrders = null;
+        let unsubscribeProducts = null;
+        let unsubscribeClients = null;
+
+        async function setupFirestoreListeners() {
+            if (!window.db) return;
+
+            if (unsubscribeOrders) unsubscribeOrders();
+            if (unsubscribeProducts) unsubscribeProducts();
+            if (unsubscribeClients) unsubscribeClients();
+
+            // Listen for all orders and calculate sales
+            const ordersPromises = [];
+            let totalSales = 0;
+            let totalOrders = 0;
+            const productSales = {};
+
+            const usersSnapshot = await getDocs(collection(window.db, 'artifacts', appId, 'users'));
+            usersSnapshot.forEach(userDoc => {
+                const userOrdersRef = collection(window.db, 'artifacts', appId, 'users', userDoc.id, 'orders');
+                const ordersQuery = query(userOrdersRef, orderBy('timestamp', 'desc'));
+                ordersPromises.push(new Promise((resolve, reject) => {
+                    onSnapshot(ordersQuery, (snapshot) => {
+                        const orders = snapshot.docs.map(doc => {
+                            const data = doc.data();
+                            totalSales += data.total;
+                            totalOrders++;
+                            data.items.forEach(item => {
+                                productSales[item.name] = (productSales[item.name] || 0) + item.quantity;
+                            });
+                            return { ...data, id: doc.id };
+                        });
+                        resolve(orders);
+                    }, reject);
+                }));
+            });
+
+            Promise.all(ordersPromises).then(results => {
+                const allOrders = [].concat(...results);
+                allOrders.sort((a, b) => b.timestamp.toDate() - a.timestamp.toDate());
+                renderOrders(allOrders);
+
+                // Update sales report
+                document.getElementById('totalSales').textContent = `$${totalSales.toFixed(2)}`;
+                document.getElementById('totalOrders').textContent = totalOrders;
+                
+                const topProducts = Object.entries(productSales).sort(([, a], [, b]) => b - a);
+                const mostSoldProduct = topProducts.length > 0 ? `${topProducts[0][0]} (${topProducts[0][1]})` : 'N/A';
+                document.getElementById('mostSoldProduct').textContent = mostSoldProduct;
+            }).catch(error => {
+                console.error("Error fetching all orders:", error);
+            });
+            
+            // Listen for all products
+            const productsRef = collection(window.db, 'artifacts', appId, 'public', 'data', 'products');
+            unsubscribeProducts = onSnapshot(query(productsRef), (snapshot) => {
+                window.products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderProducts(window.products);
+            }, (error) => {
+                console.error("Error fetching products:", error);
+            });
+
+            // Listen for all clients
+            const clientsPromises = [];
+            const clientProfilesRef = collection(window.db, 'artifacts', appId, 'users');
+            unsubscribeClients = onSnapshot(clientProfilesRef, async (snapshot) => {
+                const clients = [];
+                for (const userDoc of snapshot.docs) {
+                    const profileDocRef = doc(window.db, 'artifacts', appId, 'users', userDoc.id, 'profile', 'data');
+                    const profileDoc = await getDoc(profileDocRef);
+                    if (profileDoc.exists()) {
+                        const data = profileDoc.data();
+                        clients.push({
+                            name: data.name,
+                            email: data.email,
+                            phone: data.phone
+                        });
+                    }
+                }
+                renderClients(clients);
+            });
+        }
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(sectionId).classList.add('active');
+        }
+
+        window.onload = function () {
+            window.app = initializeApp(firebaseConfig);
+            window.db = getFirestore(window.app);
+            window.auth = getAuth(window.app);
+            
+            // Inicia sesión de forma anónima para acceder a la base de datos
+            signInAnonymously(window.auth)
+                .then(() => {
+                    setupFirestoreListeners();
+                })
+                .catch((error) => {
+                    console.error("Error al iniciar sesión anónimamente:", error);
+                });
+
+            document.getElementById('showDashboardBtn').onclick = () => showSection('dashboard-section');
+            document.getElementById('showOrdersBtn').onclick = () => showSection('orders-section');
+            document.getElementById('showProductsBtn').onclick = () => showSection('products-section');
+            document.getElementById('showClientsBtn').onclick = () => showSection('clients-section');
+
+            // Show dashboard section by default
+            showSection('dashboard-section');
+
+            document.getElementById('productForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const productId = document.getElementById('productId').value;
+                const name = document.getElementById('productName').value;
+                const price = parseFloat(document.getElementById('productPrice').value);
+                const description = document.getElementById('productDescription').value;
+                const image = document.getElementById('productImage').value;
+                
+                if (productId) {
+                    try {
+                        await updateDoc(doc(window.db, 'artifacts', appId, 'public', 'data', 'products', productId), {
+                            name, price, description, image
+                        });
+                        alert('Producto actualizado con éxito.');
+                    } catch (e) {
+                        alert('Error al actualizar el producto.');
+                        console.error("Error updating document: ", e);
+                    }
+                } else {
+                    try {
+                        await setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', 'products', name), {
+                            name, price, description, image
+                        });
+                        alert('Producto añadido con éxito.');
+                    } catch (e) {
+                        alert('Error al añadir el producto. Asegúrate de que el nombre sea único.');
+                        console.error("Error adding document: ", e);
+                    }
+                }
+                document.getElementById('productForm').reset();
+                document.getElementById('productId').value = '';
+                document.getElementById('productFormTitle').textContent = 'Añadir Nuevo Producto';
+            });
+        };
+    </script>
+</head>
+<body class="antialiased min-h-screen flex flex-col items-center p-6">
+    <div class="w-full max-w-6xl">
+        <h1 class="text-5xl font-bold text-center mb-12">Panel de Administración</h1>
+        
+        <!-- Navigation Buttons -->
+        <div class="flex justify-center space-x-4 mb-8">
+            <button id="showDashboardBtn" class="bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#c99a6a] transition-colors duration-300">
+                Panel
+            </button>
+            <button id="showOrdersBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#d4b58e] transition-colors duration-300">
+                Pedidos
+            </button>
+            <button id="showProductsBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#d4b58e] transition-colors duration-300">
+                Productos
+            </button>
+            <button id="showClientsBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#d4b58e] transition-colors duration-300">
+                Clientes
+            </button>
+        </div>
+
+        <!-- Main Admin Panel -->
+        <div class="w-full">
+            <!-- Dashboard Section -->
+            <section id="dashboard-section" class="content-section bg-white rounded-2xl shadow-xl p-8 mb-8">
+                <h2 class="text-3xl font-bold mb-6">Reporte de Ventas</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                    <div class="bg-gray-100 p-6 rounded-xl shadow-inner">
+                        <h3 class="text-xl font-semibold text-gray-700">Ventas Totales</h3>
+                        <p id="totalSales" class="mt-2 text-4xl font-bold text-[#4a2a1a]">$0.00</p>
+                    </div>
+                    <div class="bg-gray-100 p-6 rounded-xl shadow-inner">
+                        <h3 class="text-xl font-semibold text-gray-700">Total de Pedidos</h3>
+                        <p id="totalOrders" class="mt-2 text-4xl font-bold text-[#4a2a1a]">0</p>
+                    </div>
+                    <div class="bg-gray-100 p-6 rounded-xl shadow-inner">
+                        <h3 class="text-xl font-semibold text-gray-700">Producto Más Vendido</h3>
+                        <p id="mostSoldProduct" class="mt-2 text-2xl font-bold text-[#4a2a1a]">N/A</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Orders Management -->
+            <section id="orders-section" class="content-section bg-white rounded-2xl shadow-xl p-8 mb-8">
+                <h2 class="text-3xl font-bold mb-6">Gestión de Pedidos</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-gray-200 text-gray-700">
+                                <th class="p-4">Folio</th>
+                                <th class="p-4">Fecha</th>
+                                <th class="p-4">Productos</th>
+                                <th class="p-4">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersTableBody">
+                            <!-- Orders will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Products Management -->
+            <section id="products-section" class="content-section bg-white rounded-2xl shadow-xl p-8">
+                <h2 class="text-3xl font-bold mb-6">Gestión de Productos</h2>
+                <!-- Product Form -->
+                <form id="productForm" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <input type="hidden" id="productId">
+                    <div class="col-span-1">
+                        <label for="productName" class="block font-semibold mb-2">Nombre del Producto</label>
+                        <input type="text" id="productName" class="w-full p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:border-[#d4b58e]" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="productPrice" class="block font-semibold mb-2">Precio</label>
+                        <input type="number" id="productPrice" class="w-full p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:border-[#d4b58e]" step="0.01" required>
+                    </div>
+                    <div class="col-span-full">
+                        <label for="productDescription" class="block font-semibold mb-2">Descripción</label>
+                        <textarea id="productDescription" class="w-full p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:border-[#d4b58e]" rows="3" required></textarea>
+                    </div>
+                    <div class="col-span-full">
+                        <label for="productImage" class="block font-semibold mb-2">URL de la Imagen</label>
+                        <input type="url" id="productImage" class="w-full p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:border-[#d4b58e]" required>
+                    </div>
+                    <div class="col-span-full">
+                        <button type="submit" class="w-full bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 rounded-full hover:bg-[#c99a6a] transition-colors duration-300">
+                            <span id="productFormTitle">Añadir Nuevo Producto</span>
+                        </button>
+                    </div>
+                </form>
+                <!-- Products Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-gray-200 text-gray-700">
+                                <th class="p-4">Nombre</th>
+                                <th class="p-4">Precio</th>
+                                <th class="p-4">Descripción</th>
+                                <th class="p-4">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsTableBody">
+                            <!-- Products will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Clients Section -->
+            <section id="clients-section" class="content-section bg-white rounded-2xl shadow-xl p-8">
+                <h2 class="text-3xl font-bold mb-6">Gestión de Clientes</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-gray-200 text-gray-700">
+                                <th class="p-4">Nombre Completo</th>
+                                <th class="p-4">Correo Electrónico</th>
+                                <th class="p-4">Teléfono</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientsTableBody">
+                            <!-- Clients will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+</body>
+</html>
