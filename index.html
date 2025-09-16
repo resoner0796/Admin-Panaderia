@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Administración - Panadería Luis</title>
+
+    <meta name="theme-color" content="#4a2a1a">
+    <link rel="manifest" href="manifest-admin.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="icon-192x192.png">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Admin Panel">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -174,7 +181,6 @@
                 const toggleButtonText = product.isVisible ? 'Ocultar' : 'Mostrar';
                 const toggleButtonClass = product.isVisible ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600';
                 
-                // ** CAMBIO: Lógica para construir la URL desde el repositorio de GitHub **
                 const rawGitHubUrlBase = 'https://raw.githubusercontent.com/resoner0796/Tienda-Panaderia/main/';
                 const imageUrl = product.image
                     ? `${rawGitHubUrlBase}${product.image}`
@@ -442,5 +448,19 @@
             </div>
         </div>
     </div>
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw-admin.js')
+                    .then(registration => {
+                        console.log('✅ ServiceWorker de Admin registrado con éxito:', registration.scope);
+                    })
+                    .catch(err => {
+                        console.log('❌ Falló el registro del ServiceWorker de Admin:', err);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>
