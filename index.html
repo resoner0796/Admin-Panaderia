@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Administración - El Buen Pan</title>
+    <title>Panel de Administración - Panadería Luis</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, updateDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables
         window.app = null;
@@ -35,43 +35,77 @@
         };
        
         function renderOrders(orders) {
-            const ordersTableBody = document.getElementById('ordersTableBody');
-            ordersTableBody.innerHTML = '';
-            if (orders.length === 0) {
-                ordersTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No hay pedidos.</td></tr>`;
-                return;
+            const pendingOrdersBody = document.getElementById('pendingOrdersTableBody');
+            const confirmedOrdersBody = document.getElementById('confirmedOrdersTableBody');
+            pendingOrdersBody.innerHTML = '';
+            confirmedOrdersBody.innerHTML = '';
+            
+            const pendingOrders = orders.filter(order => order.status === 'Recibido');
+            const confirmedOrders = orders.filter(order => order.status === 'Confirmado');
+
+            if (pendingOrders.length === 0) {
+                pendingOrdersBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center">No hay pedidos pendientes.</td></tr>`;
+            } else {
+                pendingOrders.forEach(order => {
+                    const orderDate = order.timestamp.toDate().toLocaleString('es-ES');
+                    const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
+                    const row = `
+                        <tr class="border-b">
+                            <td class="p-4">${order.folio}</td>
+                            <td class="p-4">${order.customerName}<br><small>${order.customerEmail}</small></td>
+                            <td class="p-4">${orderDate}</td>
+                            <td class="p-4">${itemsList}</td>
+                            <td class="p-4 font-bold">$${order.total.toFixed(2)}</td>
+                            <td class="p-4">
+                                <button onclick="confirmOrder('${order.id}')" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600">Confirmar</button>
+                            </td>
+                        </tr>
+                    `;
+                    pendingOrdersBody.innerHTML += row;
+                });
             }
-            orders.forEach(order => {
-                const orderDate = order.timestamp.toDate().toLocaleString('es-ES');
-                const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
-                const row = `
-                    <tr class="border-b">
-                        <td class="p-4">${order.folio}</td>
-                        <td class="p-4">${order.customerName}<br><small>${order.customerEmail}</small></td>
-                        <td class="p-4">${orderDate}</td>
-                        <td class="p-4">${itemsList}</td>
-                        <td class="p-4 font-bold">$${order.total.toFixed(2)}</td>
-                    </tr>
-                `;
-                ordersTableBody.innerHTML += row;
-            });
+
+            if (confirmedOrders.length === 0) {
+                confirmedOrdersBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No hay pedidos confirmados.</td></tr>`;
+            } else {
+                confirmedOrders.forEach(order => {
+                    const orderDate = order.timestamp.toDate().toLocaleString('es-ES');
+                    const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
+                    const row = `
+                        <tr class="border-b bg-green-50">
+                            <td class="p-4">${order.folio}</td>
+                            <td class="p-4">${order.customerName}<br><small>${order.customerEmail}</small></td>
+                            <td class="p-4">${orderDate}</td>
+                            <td class="p-4">${itemsList}</td>
+                            <td class="p-4 font-bold">$${order.total.toFixed(2)}</td>
+                        </tr>
+                    `;
+                    confirmedOrdersBody.innerHTML += row;
+                });
+            }
         }
         
         function renderProducts(products) {
             const productsTableBody = document.getElementById('productsTableBody');
             productsTableBody.innerHTML = '';
             if (products.length === 0) {
-                productsTableBody.innerHTML = `<tr><td colspan="4" class="p-4 text-center">No hay productos.</td></tr>`;
+                productsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No hay productos.</td></tr>`;
                 return;
             }
             products.forEach(product => {
+                const visibilityText = product.isVisible ? 'Visible' : 'Oculto';
+                const visibilityClass = product.isVisible ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                const toggleButtonText = product.isVisible ? 'Ocultar' : 'Mostrar';
+                const toggleButtonClass = product.isVisible ? 'bg-orange-500' : 'bg-blue-500';
+
                 const row = `
                     <tr class="border-b">
                         <td class="p-4">${product.name}</td>
                         <td class="p-4">$${product.price.toFixed(2)}</td>
-                        <td class="p-4 truncate max-w-xs">${product.description}</td>
+                        <td class="p-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${visibilityClass}">${visibilityText}</span></td>
                         <td class="p-4 flex space-x-2">
                             <button onclick="editProduct('${product.id}')" class="bg-yellow-500 text-white p-2 rounded-lg">Editar</button>
+                            <button onclick="toggleProductVisibility('${product.id}', ${product.isVisible})" class="${toggleButtonClass} text-white p-2 rounded-lg">${toggleButtonText}</button>
                             <button onclick="deleteProduct('${product.id}')" class="bg-red-500 text-white p-2 rounded-lg">Eliminar</button>
                         </td>
                     </tr>
@@ -99,6 +133,28 @@
             });
         }
 
+        window.confirmOrder = async (orderId) => {
+            if (!confirm('¿Confirmar este pedido? Esta acción lo registrará como una venta.')) return;
+            try {
+                const orderRef = doc(window.db, 'orders', orderId);
+                await updateDoc(orderRef, { status: 'Confirmado' });
+            } catch (e) {
+                console.error("Error al confirmar el pedido: ", e);
+                alert("Hubo un error al confirmar el pedido.");
+            }
+        };
+
+        window.toggleProductVisibility = async (productId, currentVisibility) => {
+            const newVisibility = !currentVisibility;
+            const action = newVisibility ? 'mostrar' : 'ocultar';
+            if (!confirm(`¿Estás seguro de que quieres ${action} este producto?`)) return;
+            try {
+                await updateDoc(doc(window.db, 'products', productId), { isVisible: newVisibility });
+            } catch (e) {
+                console.error("Error al cambiar la visibilidad del producto: ", e);
+            }
+        };
+
         window.editProduct = (productId) => {
             const product = window.products.find(p => p.id === productId);
             if (!product) return;
@@ -108,11 +164,12 @@
             document.getElementById('productPrice').value = product.price;
             document.getElementById('productDescription').value = product.description;
             document.getElementById('productImage').value = product.image;
+            document.getElementById('productIsVisible').checked = product.isVisible;
             window.scrollTo(0, document.getElementById('productForm').offsetTop);
         };
 
         window.deleteProduct = async (productId) => {
-            if (!confirm('¿Estás seguro de que quieres eliminar este producto?')) return;
+            if (!confirm('¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE este producto?')) return;
             try {
                 await deleteDoc(doc(window.db, 'products', productId));
             } catch (e) {
@@ -131,16 +188,17 @@
                 const allOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 renderOrders(allOrders);
 
-                const totalSales = allOrders.reduce((sum, order) => sum + order.total, 0);
+                const confirmedOrders = allOrders.filter(order => order.status === 'Confirmado');
+                const totalSales = confirmedOrders.reduce((sum, order) => sum + order.total, 0);
                 const productSales = {};
-                allOrders.forEach(order => {
+                confirmedOrders.forEach(order => {
                     order.items.forEach(item => {
                         productSales[item.name] = (productSales[item.name] || 0) + item.quantity;
                     });
                 });
                 
                 document.getElementById('totalSales').textContent = `$${totalSales.toFixed(2)}`;
-                document.getElementById('totalOrders').textContent = allOrders.length;
+                document.getElementById('totalOrders').textContent = confirmedOrders.length;
                 const topProduct = Object.entries(productSales).sort(([,a],[,b]) => b-a)[0];
                 document.getElementById('mostSoldProduct').textContent = topProduct ? `${topProduct[0]} (x${topProduct[1]})` : 'N/A';
             });
@@ -195,8 +253,9 @@
                 const price = parseFloat(document.getElementById('productPrice').value);
                 const description = document.getElementById('productDescription').value;
                 const image = document.getElementById('productImage').value;
+                const isVisible = document.getElementById('productIsVisible').checked;
                 
-                const productData = { name, price, description, image };
+                const productData = { name, price, description, image, isVisible };
 
                 try {
                     if (productId) {
@@ -228,20 +287,29 @@
 
         <div>
             <section id="dashboard-section" class="content-section bg-white rounded-2xl shadow-xl p-8 mb-8">
-                <h2 class="text-3xl font-bold mb-6">Reporte de Ventas</h2>
+                <h2 class="text-3xl font-bold mb-6">Reporte de Ventas (Pedidos Confirmados)</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
                     <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-xl font-semibold">Ventas Totales</h3><p id="totalSales" class="mt-2 text-4xl font-bold">$0.00</p></div>
-                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-xl font-semibold">Total de Pedidos</h3><p id="totalOrders" class="mt-2 text-4xl font-bold">0</p></div>
+                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-xl font-semibold">Pedidos Confirmados</h3><p id="totalOrders" class="mt-2 text-4xl font-bold">0</p></div>
                     <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-xl font-semibold">Producto Más Vendido</h3><p id="mostSoldProduct" class="mt-2 text-2xl font-bold">N/A</p></div>
                 </div>
             </section>
             
             <section id="orders-section" class="content-section bg-white rounded-2xl shadow-xl p-8 mb-8">
-                <h2 class="text-3xl font-bold mb-6">Gestión de Pedidos</h2>
-                <div class="overflow-x-auto"><table class="w-full text-left">
-                    <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th></tr></thead>
-                    <tbody id="ordersTableBody"></tbody>
-                </table></div>
+                <div class="mb-12">
+                    <h2 class="text-3xl font-bold mb-6">Pedidos Pendientes</h2>
+                    <div class="overflow-x-auto"><table class="w-full text-left">
+                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4">Acción</th></tr></thead>
+                        <tbody id="pendingOrdersTableBody"></tbody>
+                    </table></div>
+                </div>
+                <div>
+                    <h2 class="text-3xl font-bold mb-6">Pedidos Confirmados</h2>
+                    <div class="overflow-x-auto"><table class="w-full text-left">
+                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th></tr></thead>
+                        <tbody id="confirmedOrdersTableBody"></tbody>
+                    </table></div>
+                </div>
             </section>
 
             <section id="products-section" class="content-section bg-white rounded-2xl shadow-xl p-8">
@@ -252,15 +320,15 @@
                     <div><label for="productName" class="block mb-2">Nombre</label><input type="text" id="productName" class="w-full p-3 rounded-lg border" required></div>
                     <div><label for="productPrice" class="block mb-2">Precio</label><input type="number" id="productPrice" class="w-full p-3 rounded-lg border" step="0.01" required></div>
                     <div class="col-span-full"><label for="productDescription" class="block mb-2">Descripción</label><textarea id="productDescription" class="w-full p-3 rounded-lg border" rows="3" required></textarea></div>
-                    
-                    <div class="col-span-full">
-                        <label for="productImage" class="block mb-2">Ruta de la Imagen</label>
-                        <input type="text" id="productImage" class="w-full p-3 rounded-lg border" placeholder="Ej: Pan/Pandemuerto.jpg" required>
+                    <div class="col-span-full"><label for="productImage" class="block mb-2">Ruta de la Imagen</label><input type="text" id="productImage" class="w-full p-3 rounded-lg border" placeholder="Ej: Pan/Pandemuerto.jpg" required></div>
+                    <div class="col-span-full flex items-center">
+                        <input type="checkbox" id="productIsVisible" class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked>
+                        <label for="productIsVisible" class="ml-2 block text-sm text-gray-900">¿Producto visible en la tienda?</label>
                     </div>
                     <div class="col-span-full"><button type="submit" class="w-full bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 rounded-full hover:bg-[#c99a6a]">Guardar Producto</button></div>
                 </form>
                 <div class="overflow-x-auto"><table class="w-full text-left">
-                    <thead><tr class="bg-gray-200"><th class="p-4">Nombre</th><th class="p-4">Precio</th><th class="p-4">Descripción</th><th class="p-4">Acciones</th></tr></thead>
+                    <thead><tr class="bg-gray-200"><th class="p-4">Nombre</th><th class="p-4">Precio</th><th class="p-4">Visibilidad</th><th class="p-4">Acciones</th></tr></thead>
                     <tbody id="productsTableBody"></tbody>
                 </table></div>
             </section>
