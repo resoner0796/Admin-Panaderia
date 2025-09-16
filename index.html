@@ -110,7 +110,6 @@
             });
         }
         
-        // ** CAMBIO: Función para obtener y cachear el teléfono del usuario **
         async function getUserPhone(userId) {
             if (userPhoneCache[userId]) {
                 return userPhoneCache[userId];
@@ -122,21 +121,18 @@
                     userPhoneCache[userId] = phone;
                     return phone;
                 }
-                return 'N/A';
+                userPhoneCache[userId] = 'No encontrado';
+                return 'No encontrado';
             } catch (e) {
                 console.error("Error fetching user phone:", e);
                 return 'Error';
             }
         }
 
-        // ** CAMBIO: La función ahora es asíncrona para poder esperar los datos del teléfono **
         async function renderOrders(orders) {
             const pendingOrdersBody = document.getElementById('pendingOrdersTableBody');
             const confirmedOrdersBody = document.getElementById('confirmedOrdersTableBody');
-            pendingOrdersBody.innerHTML = '';
-            confirmedOrdersBody.innerHTML = '';
-
-            // ** CAMBIO: Obtenemos todos los teléfonos necesarios de una vez para mayor eficiencia **
+            
             const uniqueUserIds = [...new Set(orders.map(o => o.userId))];
             await Promise.all(uniqueUserIds.map(id => getUserPhone(id)));
             
@@ -145,9 +141,8 @@
 
             const renderRow = (order, isConfirmed = false) => {
                 const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
-                const phone = userPhoneCache[order.userId] || 'Cargando...';
+                const phone = userPhoneCache[order.userId] || 'N/A';
                 
-                // ** CAMBIO: Lógica para mostrar los detalles de entrega **
                 let deliveryInfoHtml = '<span class="text-gray-500">N/A</span>';
                 if (order.delivery) {
                     if (order.delivery.method === 'Envío a domicilio') {
@@ -181,17 +176,13 @@
                 `;
             };
 
-            if (pendingOrders.length === 0) {
-                pendingOrdersBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center">No hay pedidos pendientes.</td></tr>`;
-            } else {
-                pendingOrdersBody.innerHTML = pendingOrders.map(order => renderRow(order, false)).join('');
-            }
+            pendingOrdersBody.innerHTML = pendingOrders.length === 0 
+                ? `<tr><td colspan="6" class="p-4 text-center">No hay pedidos pendientes.</td></tr>`
+                : pendingOrders.map(order => renderRow(order, false)).join('');
 
-            if (confirmedOrders.length === 0) {
-                confirmedOrdersBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center">No hay pedidos confirmados.</td></tr>`;
-            } else {
-                confirmedOrdersBody.innerHTML = confirmedOrders.map(order => renderRow(order, true)).join('');
-            }
+            confirmedOrdersBody.innerHTML = confirmedOrders.length === 0
+                ? `<tr><td colspan="6" class="p-4 text-center">No hay pedidos confirmados.</td></tr>`
+                : confirmedOrders.map(order => renderRow(order, true)).join('');
         }
         
         function renderProducts(products) {
@@ -313,19 +304,16 @@
             unsubscribes = [];
 
             const ordersQuery = query(collection(window.db, 'orders'), orderBy('timestamp', 'desc'));
-            const unsubOrders = onSnapshot(ordersQuery, (snapshot) => {
+            // ** CAMBIO: La función que maneja los pedidos ahora es asíncrona para esperar los datos del teléfono **
+            const unsubOrders = onSnapshot(ordersQuery, async (snapshot) => {
                 const allOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-                renderOrders(allOrders);
+                
+                // ** CAMBIO: Se espera a que renderOrders termine de cargar los teléfonos ANTES de seguir **
+                await renderOrders(allOrders);
 
-                // ** CAMBIO: Lógica del dashboard para separar ventas y envíos **
                 const confirmedOrders = allOrders.filter(order => order.status === 'Confirmado');
-                
-                // Suma solo el subtotal de productos. Si no existe, lo calcula.
                 const totalProductSales = confirmedOrders.reduce((sum, order) => sum + (order.subtotal || (order.total - (order.delivery?.cost || 0))), 0);
-                
-                // Suma solo los costos de envío.
                 const totalShippingRevenue = confirmedOrders.reduce((sum, order) => sum + (order.delivery?.cost || 0), 0);
-                
                 const productSales = {};
                 confirmedOrders.forEach(order => { order.items.forEach(item => { productSales[item.name] = (productSales[item.name] || 0) + item.quantity; }); });
                 
