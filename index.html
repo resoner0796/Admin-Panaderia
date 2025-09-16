@@ -78,12 +78,13 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, updateDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, updateDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         window.app = null;
         window.db = null;
         window.auth = null;
         window.products = [];
+        const userPhoneCache = {}; // Caché simple para no pedir el mismo teléfono varias veces
 
         const firebaseConfig = {
           apiKey: "AIzaSyAhxUAUO4Z0klgk_Fcx2uoTbSOIpSXEvqk",
@@ -108,63 +109,88 @@
                 cancelBtn.onclick = () => { modal.classList.add('hidden'); resolve(false); };
             });
         }
-       
-        function renderOrders(orders) {
+        
+        // ** CAMBIO: Función para obtener y cachear el teléfono del usuario **
+        async function getUserPhone(userId) {
+            if (userPhoneCache[userId]) {
+                return userPhoneCache[userId];
+            }
+            try {
+                const userDoc = await getDoc(doc(window.db, 'users', userId));
+                if (userDoc.exists()) {
+                    const phone = userDoc.data().phone || 'N/A';
+                    userPhoneCache[userId] = phone;
+                    return phone;
+                }
+                return 'N/A';
+            } catch (e) {
+                console.error("Error fetching user phone:", e);
+                return 'Error';
+            }
+        }
+
+        // ** CAMBIO: La función ahora es asíncrona para poder esperar los datos del teléfono **
+        async function renderOrders(orders) {
             const pendingOrdersBody = document.getElementById('pendingOrdersTableBody');
             const confirmedOrdersBody = document.getElementById('confirmedOrdersTableBody');
             pendingOrdersBody.innerHTML = '';
             confirmedOrdersBody.innerHTML = '';
+
+            // ** CAMBIO: Obtenemos todos los teléfonos necesarios de una vez para mayor eficiencia **
+            const uniqueUserIds = [...new Set(orders.map(o => o.userId))];
+            await Promise.all(uniqueUserIds.map(id => getUserPhone(id)));
             
             const pendingOrders = orders.filter(order => order.status === 'Recibido');
             const confirmedOrders = orders.filter(order => order.status === 'Confirmado');
 
+            const renderRow = (order, isConfirmed = false) => {
+                const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
+                const phone = userPhoneCache[order.userId] || 'Cargando...';
+                
+                // ** CAMBIO: Lógica para mostrar los detalles de entrega **
+                let deliveryInfoHtml = '<span class="text-gray-500">N/A</span>';
+                if (order.delivery) {
+                    if (order.delivery.method === 'Envío a domicilio') {
+                        const addr = order.delivery.address;
+                        deliveryInfoHtml = `
+                            <p class="font-semibold">Envío a domicilio</p>
+                            <p class="text-sm text-gray-600">
+                                ${addr.street} #${addr.number}, Col. ${addr.neighborhood}<br>
+                                Ref: ${addr.reference}
+                            </p>
+                        `;
+                    } else {
+                        deliveryInfoHtml = `<p class="font-semibold">Recoger en tienda</p>`;
+                    }
+                }
+
+                return `
+                    <tr class="border-b ${isConfirmed ? 'bg-green-50' : ''}">
+                        <td data-label="Folio" class="p-4">${order.folio}</td>
+                        <td data-label="Cliente" class="p-4">${order.customerName}<br><small class="text-gray-500 font-semibold">${phone}</small></td>
+                        <td data-label="Entrega" class="p-4">${deliveryInfoHtml}</td>
+                        <td data-label="Productos" class="p-4">${itemsList}</td>
+                        <td data-label="Total" class="p-4 font-bold">$${order.total.toFixed(2)}</td>
+                        <td class="p-4 actions-cell">
+                            <div class="flex flex-col sm:flex-row gap-2 justify-end">
+                                ${!isConfirmed ? `<button onclick="confirmOrder('${order.id}')" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600 w-full sm:w-auto">Confirmar</button>` : ''}
+                                <button onclick="deleteOrder('${order.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 w-full sm:w-auto">Eliminar</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            };
+
             if (pendingOrders.length === 0) {
                 pendingOrdersBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center">No hay pedidos pendientes.</td></tr>`;
             } else {
-                pendingOrders.forEach(order => {
-                    const orderDate = order.timestamp.toDate().toLocaleString('es-ES');
-                    const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
-                    const row = `
-                        <tr class="border-b">
-                            <td data-label="Folio" class="p-4">${order.folio}</td>
-                            <td data-label="Cliente" class="p-4">${order.customerName}<br><small class="text-gray-500">${order.customerEmail}</small></td>
-                            <td data-label="Fecha" class="p-4">${orderDate}</td>
-                            <td data-label="Productos" class="p-4">${itemsList}</td>
-                            <td data-label="Total" class="p-4 font-bold">$${order.total.toFixed(2)}</td>
-                            <td class="p-4 actions-cell">
-                                <div class="flex flex-col sm:flex-row gap-2 justify-end">
-                                    <button onclick="confirmOrder('${order.id}')" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600 w-full sm:w-auto">Confirmar</button>
-                                    <button onclick="deleteOrder('${order.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 w-full sm:w-auto">Eliminar</button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                    pendingOrdersBody.innerHTML += row;
-                });
+                pendingOrdersBody.innerHTML = pendingOrders.map(order => renderRow(order, false)).join('');
             }
 
             if (confirmedOrders.length === 0) {
                 confirmedOrdersBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center">No hay pedidos confirmados.</td></tr>`;
             } else {
-                confirmedOrders.forEach(order => {
-                    const orderDate = order.timestamp.toDate().toLocaleString('es-ES');
-                    const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
-                    const row = `
-                        <tr class="border-b bg-green-50">
-                            <td data-label="Folio" class="p-4">${order.folio}</td>
-                            <td data-label="Cliente" class="p-4">${order.customerName}<br><small class="text-gray-500">${order.customerEmail}</small></td>
-                            <td data-label="Fecha" class="p-4">${orderDate}</td>
-                            <td data-label="Productos" class="p-4">${itemsList}</td>
-                            <td data-label="Total" class="p-4 font-bold">$${order.total.toFixed(2)}</td>
-                            <td class="p-4 actions-cell">
-                                <div class="flex justify-end">
-                                    <button onclick="deleteOrder('${order.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 w-full sm:w-auto">Eliminar</button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                    confirmedOrdersBody.innerHTML += row;
-                });
+                confirmedOrdersBody.innerHTML = confirmedOrders.map(order => renderRow(order, true)).join('');
             }
         }
         
@@ -291,13 +317,22 @@
                 const allOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 renderOrders(allOrders);
 
+                // ** CAMBIO: Lógica del dashboard para separar ventas y envíos **
                 const confirmedOrders = allOrders.filter(order => order.status === 'Confirmado');
-                const totalSales = confirmedOrders.reduce((sum, order) => sum + order.total, 0);
+                
+                // Suma solo el subtotal de productos. Si no existe, lo calcula.
+                const totalProductSales = confirmedOrders.reduce((sum, order) => sum + (order.subtotal || (order.total - (order.delivery?.cost || 0))), 0);
+                
+                // Suma solo los costos de envío.
+                const totalShippingRevenue = confirmedOrders.reduce((sum, order) => sum + (order.delivery?.cost || 0), 0);
+                
                 const productSales = {};
                 confirmedOrders.forEach(order => { order.items.forEach(item => { productSales[item.name] = (productSales[item.name] || 0) + item.quantity; }); });
                 
-                document.getElementById('totalSales').textContent = `$${totalSales.toFixed(2)}`;
+                document.getElementById('totalSales').textContent = `$${totalProductSales.toFixed(2)}`;
+                document.getElementById('totalShipping').textContent = `$${totalShippingRevenue.toFixed(2)}`;
                 document.getElementById('totalOrders').textContent = confirmedOrders.length;
+                
                 const topProduct = Object.entries(productSales).sort(([,a],[,b]) => b-a)[0];
                 document.getElementById('mostSoldProduct').textContent = topProduct ? `${topProduct[0]} (x${topProduct[1]})` : 'N/A';
             });
@@ -383,8 +418,9 @@
         <div>
             <section id="dashboard-section" class="content-section bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-8">
                 <h2 class="text-2xl md:text-3xl font-bold mb-6">Reporte de Ventas (Pedidos Confirmados)</h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Ventas Totales</h3><p id="totalSales" class="mt-2 text-3xl md:text-4xl font-bold">$0.00</p></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-center">
+                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Venta de Productos</h3><p id="totalSales" class="mt-2 text-3xl md:text-4xl font-bold">$0.00</p></div>
+                    <div class="bg-blue-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Ingresos por Envíos</h3><p id="totalShipping" class="mt-2 text-3xl md:text-4xl font-bold">$0.00</p></div>
                     <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Pedidos Confirmados</h3><p id="totalOrders" class="mt-2 text-3xl md:text-4xl font-bold">0</p></div>
                     <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Producto Más Vendido</h3><p id="mostSoldProduct" class="mt-2 text-xl md:text-2xl font-bold">N/A</p></div>
                 </div>
@@ -394,14 +430,14 @@
                 <div class="mb-12">
                     <h2 class="text-2xl md:text-3xl font-bold mb-6">Pedidos Pendientes</h2>
                     <table class="w-full text-left responsive-table">
-                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4 text-right">Acciones</th></tr></thead>
+                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Entrega</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4 text-right">Acciones</th></tr></thead>
                         <tbody id="pendingOrdersTableBody"></tbody>
                     </table>
                 </div>
                 <div>
                     <h2 class="text-2xl md:text-3xl font-bold mb-6">Pedidos Confirmados</h2>
                     <table class="w-full text-left responsive-table">
-                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4 text-right">Acciones</th></tr></thead>
+                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Entrega</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4 text-right">Acciones</th></tr></thead>
                         <tbody id="confirmedOrdersTableBody"></tbody>
                     </table>
                 </div>
