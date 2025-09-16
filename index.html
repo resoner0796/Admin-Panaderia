@@ -82,7 +82,7 @@
           apiKey: "AIzaSyAhxUAUO4Z0klgk_Fcx2uoTbSOIpSXEvqk",
           authDomain: "panaderia-c15f7.firebaseapp.com",
           projectId: "panaderia-c15f7",
-          storageBucket: "panaderia-c15f7.firebasestorage.app",
+          storageBucket: "panaderia-c15f7.appspot.com",
           messagingSenderId: "200423925424",
           appId: "1:200423925424:web:84148451383055c930fd75"
         };
@@ -165,7 +165,8 @@
             const productsTableBody = document.getElementById('productsTableBody');
             productsTableBody.innerHTML = '';
             if (products.length === 0) {
-                productsTableBody.innerHTML = `<tr><td colspan="4" class="p-4 text-center">No hay productos.</td></tr>`;
+                // ** CAMBIO: Aumentado el colspan a 5 por la nueva columna de imagen **
+                productsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No hay productos.</td></tr>`;
                 return;
             }
             products.forEach(product => {
@@ -173,9 +174,18 @@
                 const visibilityClass = product.isVisible ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
                 const toggleButtonText = product.isVisible ? 'Ocultar' : 'Mostrar';
                 const toggleButtonClass = product.isVisible ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600';
+                
+                // ** CAMBIO: Lógica para construir la URL de la imagen desde Firebase Storage **
+                const bucket = firebaseConfig.storageBucket;
+                const imageUrl = product.image
+                    ? `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(product.image)}?alt=media`
+                    : 'https://via.placeholder.com/150?text=No+Imagen';
 
                 const row = `
                     <tr class="border-b">
+                        <td data-label="Imagen" class="p-2">
+                            <img src="${imageUrl}" alt="${product.name}" class="w-16 h-16 object-cover rounded-md bg-gray-100" onerror="this.src='https://via.placeholder.com/150?text=Error'; this.onerror=null;">
+                        </td>
                         <td data-label="Nombre" class="p-4">${product.name}</td>
                         <td data-label="Precio" class="p-4">$${product.price.toFixed(2)}</td>
                         <td data-label="Visibilidad" class="p-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${visibilityClass}">${visibilityText}</span></td>
@@ -408,7 +418,7 @@
                     <div class="col-span-full"><button type="submit" class="w-full bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 rounded-full hover:bg-[#c99a6a]">Guardar Producto</button></div>
                 </form>
                 <table class="w-full text-left responsive-table">
-                    <thead><tr class="bg-gray-200"><th class="p-4">Nombre</th><th class="p-4">Precio</th><th class="p-4">Visibilidad</th><th class="p-4 text-right">Acciones</th></tr></thead>
+                    <thead><tr class="bg-gray-200"><th class="p-4">Imagen</th><th class="p-4">Nombre</th><th class="p-4">Precio</th><th class="p-4">Visibilidad</th><th class="p-4 text-right">Acciones</th></tr></thead>
                     <tbody id="productsTableBody"></tbody>
                 </table>
             </section>
