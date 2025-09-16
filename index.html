@@ -165,7 +165,6 @@
             const productsTableBody = document.getElementById('productsTableBody');
             productsTableBody.innerHTML = '';
             if (products.length === 0) {
-                // ** CAMBIO: Aumentado el colspan a 5 por la nueva columna de imagen **
                 productsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No hay productos.</td></tr>`;
                 return;
             }
@@ -175,10 +174,10 @@
                 const toggleButtonText = product.isVisible ? 'Ocultar' : 'Mostrar';
                 const toggleButtonClass = product.isVisible ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600';
                 
-                // ** CAMBIO: Lógica para construir la URL de la imagen desde Firebase Storage **
-                const bucket = firebaseConfig.storageBucket;
+                // ** CAMBIO: Lógica para construir la URL desde el repositorio de GitHub **
+                const rawGitHubUrlBase = 'https://raw.githubusercontent.com/resoner0796/Tienda-Panaderia/main/';
                 const imageUrl = product.image
-                    ? `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(product.image)}?alt=media`
+                    ? `${rawGitHubUrlBase}${product.image}`
                     : 'https://via.placeholder.com/150?text=No+Imagen';
 
                 const row = `
