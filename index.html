@@ -12,6 +12,20 @@
         body { font-family: 'Inter', sans-serif; background-color: #f7f3f0; color: #4a2a1a; }
         .content-section { display: none; }
         .content-section.active { display: block; }
+
+        /* Estilos para el nuevo modal de confirmación */
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        .modal-box {
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            transform: translateY(-30px);
+            opacity: 0;
+        }
+        .modal-overlay:not(.hidden) .modal-box {
+            transform: translateY(0);
+            opacity: 1;
+        }
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -33,6 +47,37 @@
           messagingSenderId: "200423925424",
           appId: "1:200423925424:web:84148451383055c930fd75"
         };
+
+        // --- NUEVA FUNCIÓN PARA EL MODAL DE CONFIRMACIÓN ---
+        function showConfirmationModal({ title, message, confirmText, confirmClasses }) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('confirmationModal');
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalMessage').textContent = message;
+
+                const confirmBtn = document.getElementById('modalConfirmBtn');
+                confirmBtn.textContent = confirmText;
+                // Limpiar clases viejas y añadir nuevas
+                confirmBtn.className = `px-6 py-2 rounded-lg text-white font-semibold ${confirmClasses}`;
+
+                const cancelBtn = document.getElementById('modalCancelBtn');
+
+                modal.classList.remove('hidden');
+
+                const onConfirm = () => {
+                    modal.classList.add('hidden');
+                    resolve(true);
+                };
+
+                const onCancel = () => {
+                    modal.classList.add('hidden');
+                    resolve(false);
+                };
+
+                confirmBtn.onclick = onConfirm;
+                cancelBtn.onclick = onCancel;
+            });
+        }
        
         function renderOrders(orders) {
             const pendingOrdersBody = document.getElementById('pendingOrdersTableBody');
@@ -96,7 +141,7 @@
                 const visibilityText = product.isVisible ? 'Visible' : 'Oculto';
                 const visibilityClass = product.isVisible ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
                 const toggleButtonText = product.isVisible ? 'Ocultar' : 'Mostrar';
-                const toggleButtonClass = product.isVisible ? 'bg-orange-500' : 'bg-blue-500';
+                const toggleButtonClass = product.isVisible ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600';
 
                 const row = `
                     <tr class="border-b">
@@ -104,9 +149,9 @@
                         <td class="p-4">$${product.price.toFixed(2)}</td>
                         <td class="p-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${visibilityClass}">${visibilityText}</span></td>
                         <td class="p-4 flex space-x-2">
-                            <button onclick="editProduct('${product.id}')" class="bg-yellow-500 text-white p-2 rounded-lg">Editar</button>
+                            <button onclick="editProduct('${product.id}')" class="bg-yellow-500 text-white p-2 rounded-lg hover:bg-yellow-600">Editar</button>
                             <button onclick="toggleProductVisibility('${product.id}', ${product.isVisible})" class="${toggleButtonClass} text-white p-2 rounded-lg">${toggleButtonText}</button>
-                            <button onclick="deleteProduct('${product.id}')" class="bg-red-500 text-white p-2 rounded-lg">Eliminar</button>
+                            <button onclick="deleteProduct('${product.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600">Eliminar</button>
                         </td>
                     </tr>
                 `;
@@ -134,20 +179,36 @@
         }
 
         window.confirmOrder = async (orderId) => {
-            if (!confirm('¿Confirmar este pedido? Esta acción lo registrará como una venta.')) return;
+            const confirmed = await showConfirmationModal({
+                title: 'Confirmar Pedido',
+                message: '¿Confirmar este pedido? Esta acción lo registrará como una venta y no se puede deshacer.',
+                confirmText: 'Confirmar',
+                confirmClasses: 'bg-green-500 hover:bg-green-600'
+            });
+
+            if (!confirmed) return;
+
             try {
                 const orderRef = doc(window.db, 'orders', orderId);
                 await updateDoc(orderRef, { status: 'Confirmado' });
             } catch (e) {
                 console.error("Error al confirmar el pedido: ", e);
-                alert("Hubo un error al confirmar el pedido.");
             }
         };
 
         window.toggleProductVisibility = async (productId, currentVisibility) => {
             const newVisibility = !currentVisibility;
             const action = newVisibility ? 'mostrar' : 'ocultar';
-            if (!confirm(`¿Estás seguro de que quieres ${action} este producto?`)) return;
+            
+            const confirmed = await showConfirmationModal({
+                title: `${action.charAt(0).toUpperCase() + action.slice(1)} Producto`,
+                message: `¿Estás seguro de que quieres ${action} este producto?`,
+                confirmText: `Sí, ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+                confirmClasses: newVisibility ? 'bg-blue-500 hover:bg-blue-600' : 'bg-orange-500 hover:bg-orange-600'
+            });
+
+            if (!confirmed) return;
+
             try {
                 await updateDoc(doc(window.db, 'products', productId), { isVisible: newVisibility });
             } catch (e) {
@@ -169,7 +230,15 @@
         };
 
         window.deleteProduct = async (productId) => {
-            if (!confirm('¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE este producto?')) return;
+            const confirmed = await showConfirmationModal({
+                title: 'Eliminar Producto',
+                message: '¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE este producto? Esta acción no se puede deshacer.',
+                confirmText: 'Sí, Eliminar',
+                confirmClasses: 'bg-red-500 hover:bg-red-600'
+            });
+
+            if (!confirmed) return;
+
             try {
                 await deleteDoc(doc(window.db, 'products', productId));
             } catch (e) {
@@ -234,9 +303,14 @@
                     console.log("Admin signed in anonymously.");
                     setupFirestoreListeners();
                 })
-                .catch((error) => {
+                .catch(async (error) => {
                     console.error("Error signing in anonymously:", error);
-                    alert("No se pudo conectar a la base de datos. Revisa la consola para ver los errores.");
+                    await showConfirmationModal({
+                        title: 'Error de Conexión',
+                        message: 'No se pudo conectar a la base de datos. Por favor, revisa tu conexión a internet y la configuración de Firebase.',
+                        confirmText: 'Entendido',
+                        confirmClasses: 'bg-red-500 hover:bg-red-600'
+                    });
                 });
 
             document.getElementById('showDashboardBtn').onclick = () => showSection('dashboard-section');
@@ -342,5 +416,16 @@
             </section>
         </div>
     </div>
-</body>
+
+    <div id="confirmationModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 hidden modal-overlay">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 modal-box">
+            <h3 id="modalTitle" class="text-2xl font-bold mb-4"></h3>
+            <p id="modalMessage" class="text-gray-600 mb-6"></p>
+            <div class="flex justify-end space-x-4">
+                <button id="modalCancelBtn" class="px-6 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold">Cancelar</button>
+                <button id="modalConfirmBtn" class="px-6 py-2 rounded-lg text-white font-semibold"></button>
+            </div>
+        </div>
+    </div>
+    </body>
 </html>
