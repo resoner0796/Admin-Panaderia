@@ -84,7 +84,7 @@
         window.db = null;
         window.auth = null;
         window.products = [];
-        const userPhoneCache = {}; // Caché simple para no pedir el mismo teléfono varias veces
+        const userPhoneCache = {}; 
 
         const firebaseConfig = {
           apiKey: "AIzaSyAhxUAUO4Z0klgk_Fcx2uoTbSOIpSXEvqk",
@@ -121,10 +121,11 @@
                     userPhoneCache[userId] = phone;
                     return phone;
                 }
-                userPhoneCache[userId] = 'No encontrado';
-                return 'No encontrado';
+                userPhoneCache[userId] = 'No Encontrado';
+                return 'No Encontrado';
             } catch (e) {
                 console.error("Error fetching user phone:", e);
+                userPhoneCache[userId] = 'Error';
                 return 'Error';
             }
         }
@@ -304,11 +305,10 @@
             unsubscribes = [];
 
             const ordersQuery = query(collection(window.db, 'orders'), orderBy('timestamp', 'desc'));
-            // ** CAMBIO: La función que maneja los pedidos ahora es asíncrona para esperar los datos del teléfono **
             const unsubOrders = onSnapshot(ordersQuery, async (snapshot) => {
                 const allOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 
-                // ** CAMBIO: Se espera a que renderOrders termine de cargar los teléfonos ANTES de seguir **
+                // ** CAMBIO CLAVE: Se espera a que la función que dibuja la tabla termine por completo **
                 await renderOrders(allOrders);
 
                 const confirmedOrders = allOrders.filter(order => order.status === 'Confirmado');
