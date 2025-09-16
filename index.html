@@ -13,7 +13,6 @@
         .content-section { display: none; }
         .content-section.active { display: block; }
 
-        /* Estilos para el nuevo modal de confirmación */
         .modal-overlay {
             transition: opacity 0.3s ease;
         }
@@ -26,19 +25,59 @@
             transform: translateY(0);
             opacity: 1;
         }
+
+        /* Estilos para las tablas responsivas en móvil */
+        @media (max-width: 768px) {
+            .responsive-table thead {
+                display: none;
+            }
+            .responsive-table tbody, .responsive-table tr, .responsive-table td {
+                display: block;
+                width: 100%;
+            }
+            .responsive-table tr {
+                margin-bottom: 1rem;
+                border: 1px solid #ddd;
+                border-radius: 0.5rem;
+                overflow: hidden;
+            }
+            .responsive-table td {
+                padding-left: 50%;
+                position: relative;
+                text-align: right;
+                border-bottom: 1px solid #eee;
+            }
+            .responsive-table td:before {
+                content: attr(data-label);
+                position: absolute;
+                left: 0.5rem;
+                width: 45%;
+                padding-right: 0.5rem;
+                text-align: left;
+                font-weight: 600;
+            }
+            .responsive-table td:last-child {
+                border-bottom: 0;
+            }
+            .responsive-table td.actions-cell {
+                 padding-left: 0.5rem;
+                 text-align: center;
+            }
+             .responsive-table td.actions-cell:before {
+                 content: ''; /* Sin etiqueta para la celda de acciones */
+             }
+        }
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, updateDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global variables
         window.app = null;
         window.db = null;
         window.auth = null;
         window.products = [];
 
-        // Firebase configuration
         const firebaseConfig = {
           apiKey: "AIzaSyAhxUAUO4Z0klgk_Fcx2uoTbSOIpSXEvqk",
           authDomain: "panaderia-c15f7.firebaseapp.com",
@@ -48,34 +87,18 @@
           appId: "1:200423925424:web:84148451383055c930fd75"
         };
 
-        // --- NUEVA FUNCIÓN PARA EL MODAL DE CONFIRMACIÓN ---
         function showConfirmationModal({ title, message, confirmText, confirmClasses }) {
             return new Promise((resolve) => {
                 const modal = document.getElementById('confirmationModal');
                 document.getElementById('modalTitle').textContent = title;
                 document.getElementById('modalMessage').textContent = message;
-
                 const confirmBtn = document.getElementById('modalConfirmBtn');
                 confirmBtn.textContent = confirmText;
-                // Limpiar clases viejas y añadir nuevas
                 confirmBtn.className = `px-6 py-2 rounded-lg text-white font-semibold ${confirmClasses}`;
-
                 const cancelBtn = document.getElementById('modalCancelBtn');
-
                 modal.classList.remove('hidden');
-
-                const onConfirm = () => {
-                    modal.classList.add('hidden');
-                    resolve(true);
-                };
-
-                const onCancel = () => {
-                    modal.classList.add('hidden');
-                    resolve(false);
-                };
-
-                confirmBtn.onclick = onConfirm;
-                cancelBtn.onclick = onCancel;
+                confirmBtn.onclick = () => { modal.classList.add('hidden'); resolve(true); };
+                cancelBtn.onclick = () => { modal.classList.add('hidden'); resolve(false); };
             });
         }
        
@@ -96,13 +119,16 @@
                     const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
                     const row = `
                         <tr class="border-b">
-                            <td class="p-4">${order.folio}</td>
-                            <td class="p-4">${order.customerName}<br><small>${order.customerEmail}</small></td>
-                            <td class="p-4">${orderDate}</td>
-                            <td class="p-4">${itemsList}</td>
-                            <td class="p-4 font-bold">$${order.total.toFixed(2)}</td>
-                            <td class="p-4">
-                                <button onclick="confirmOrder('${order.id}')" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600">Confirmar</button>
+                            <td data-label="Folio" class="p-4">${order.folio}</td>
+                            <td data-label="Cliente" class="p-4">${order.customerName}<br><small class="text-gray-500">${order.customerEmail}</small></td>
+                            <td data-label="Fecha" class="p-4">${orderDate}</td>
+                            <td data-label="Productos" class="p-4">${itemsList}</td>
+                            <td data-label="Total" class="p-4 font-bold">$${order.total.toFixed(2)}</td>
+                            <td class="p-4 actions-cell">
+                                <div class="flex flex-col sm:flex-row gap-2 justify-end">
+                                    <button onclick="confirmOrder('${order.id}')" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600 w-full sm:w-auto">Confirmar</button>
+                                    <button onclick="deleteOrder('${order.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 w-full sm:w-auto">Eliminar</button>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -111,18 +137,23 @@
             }
 
             if (confirmedOrders.length === 0) {
-                confirmedOrdersBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No hay pedidos confirmados.</td></tr>`;
+                confirmedOrdersBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center">No hay pedidos confirmados.</td></tr>`;
             } else {
                 confirmedOrders.forEach(order => {
                     const orderDate = order.timestamp.toDate().toLocaleString('es-ES');
                     const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
                     const row = `
                         <tr class="border-b bg-green-50">
-                            <td class="p-4">${order.folio}</td>
-                            <td class="p-4">${order.customerName}<br><small>${order.customerEmail}</small></td>
-                            <td class="p-4">${orderDate}</td>
-                            <td class="p-4">${itemsList}</td>
-                            <td class="p-4 font-bold">$${order.total.toFixed(2)}</td>
+                            <td data-label="Folio" class="p-4">${order.folio}</td>
+                            <td data-label="Cliente" class="p-4">${order.customerName}<br><small class="text-gray-500">${order.customerEmail}</small></td>
+                            <td data-label="Fecha" class="p-4">${orderDate}</td>
+                            <td data-label="Productos" class="p-4">${itemsList}</td>
+                            <td data-label="Total" class="p-4 font-bold">$${order.total.toFixed(2)}</td>
+                            <td class="p-4 actions-cell">
+                                <div class="flex justify-end">
+                                    <button onclick="deleteOrder('${order.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 w-full sm:w-auto">Eliminar</button>
+                                </div>
+                            </td>
                         </tr>
                     `;
                     confirmedOrdersBody.innerHTML += row;
@@ -134,7 +165,7 @@
             const productsTableBody = document.getElementById('productsTableBody');
             productsTableBody.innerHTML = '';
             if (products.length === 0) {
-                productsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No hay productos.</td></tr>`;
+                productsTableBody.innerHTML = `<tr><td colspan="4" class="p-4 text-center">No hay productos.</td></tr>`;
                 return;
             }
             products.forEach(product => {
@@ -145,13 +176,15 @@
 
                 const row = `
                     <tr class="border-b">
-                        <td class="p-4">${product.name}</td>
-                        <td class="p-4">$${product.price.toFixed(2)}</td>
-                        <td class="p-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${visibilityClass}">${visibilityText}</span></td>
-                        <td class="p-4 flex space-x-2">
-                            <button onclick="editProduct('${product.id}')" class="bg-yellow-500 text-white p-2 rounded-lg hover:bg-yellow-600">Editar</button>
-                            <button onclick="toggleProductVisibility('${product.id}', ${product.isVisible})" class="${toggleButtonClass} text-white p-2 rounded-lg">${toggleButtonText}</button>
-                            <button onclick="deleteProduct('${product.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600">Eliminar</button>
+                        <td data-label="Nombre" class="p-4">${product.name}</td>
+                        <td data-label="Precio" class="p-4">$${product.price.toFixed(2)}</td>
+                        <td data-label="Visibilidad" class="p-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${visibilityClass}">${visibilityText}</span></td>
+                        <td class="p-4 actions-cell">
+                            <div class="flex flex-col sm:flex-row gap-2 justify-end">
+                                <button onclick="editProduct('${product.id}')" class="bg-yellow-500 text-white p-2 rounded-lg hover:bg-yellow-600 w-full sm:w-auto">Editar</button>
+                                <button onclick="toggleProductVisibility('${product.id}', ${product.isVisible})" class="${toggleButtonClass} text-white p-2 rounded-lg w-full sm:w-auto">${toggleButtonText}</button>
+                                <button onclick="deleteProduct('${product.id}')" class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 w-full sm:w-auto">Eliminar</button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -169,9 +202,9 @@
             clients.forEach(client => {
                 const row = `
                     <tr class="border-b">
-                        <td class="p-4">${client.fullName}</td>
-                        <td class="p-4">${client.email}</td>
-                        <td class="p-4">${client.phone}</td>
+                        <td data-label="Nombre" class="p-4">${client.fullName}</td>
+                        <td data-label="Correo" class="p-4">${client.email}</td>
+                        <td data-label="Teléfono" class="p-4">${client.phone}</td>
                     </tr>
                 `;
                 clientsTableBody.innerHTML += row;
@@ -179,38 +212,31 @@
         }
 
         window.confirmOrder = async (orderId) => {
-            const confirmed = await showConfirmationModal({
-                title: 'Confirmar Pedido',
-                message: '¿Confirmar este pedido? Esta acción lo registrará como una venta y no se puede deshacer.',
-                confirmText: 'Confirmar',
-                confirmClasses: 'bg-green-500 hover:bg-green-600'
-            });
-
+            const confirmed = await showConfirmationModal({ title: 'Confirmar Pedido', message: '¿Confirmar este pedido? Esta acción lo registrará como una venta.', confirmText: 'Confirmar', confirmClasses: 'bg-green-500 hover:bg-green-600' });
             if (!confirmed) return;
-
             try {
-                const orderRef = doc(window.db, 'orders', orderId);
-                await updateDoc(orderRef, { status: 'Confirmado' });
+                await updateDoc(doc(window.db, 'orders', orderId), { status: 'Confirmado' });
             } catch (e) {
                 console.error("Error al confirmar el pedido: ", e);
             }
         };
 
-        window.toggleProductVisibility = async (productId, currentVisibility) => {
-            const newVisibility = !currentVisibility;
-            const action = newVisibility ? 'mostrar' : 'ocultar';
-            
-            const confirmed = await showConfirmationModal({
-                title: `${action.charAt(0).toUpperCase() + action.slice(1)} Producto`,
-                message: `¿Estás seguro de que quieres ${action} este producto?`,
-                confirmText: `Sí, ${action.charAt(0).toUpperCase() + action.slice(1)}`,
-                confirmClasses: newVisibility ? 'bg-blue-500 hover:bg-blue-600' : 'bg-orange-500 hover:bg-orange-600'
-            });
-
+        window.deleteOrder = async (orderId) => {
+            const confirmed = await showConfirmationModal({ title: 'Eliminar Pedido', message: '¿Estás seguro de que quieres ELIMINAR este pedido? Esta acción es permanente.', confirmText: 'Sí, Eliminar', confirmClasses: 'bg-red-500 hover:bg-red-600' });
             if (!confirmed) return;
-
             try {
-                await updateDoc(doc(window.db, 'products', productId), { isVisible: newVisibility });
+                await deleteDoc(doc(window.db, 'orders', orderId));
+            } catch (e) {
+                console.error("Error al eliminar el pedido: ", e);
+            }
+        };
+
+        window.toggleProductVisibility = async (productId, currentVisibility) => {
+            const action = !currentVisibility ? 'mostrar' : 'ocultar';
+            const confirmed = await showConfirmationModal({ title: `${action.charAt(0).toUpperCase() + action.slice(1)} Producto`, message: `¿Estás seguro de que quieres ${action} este producto?`, confirmText: `Sí, ${action.charAt(0).toUpperCase() + action.slice(1)}`, confirmClasses: !currentVisibility ? 'bg-blue-500 hover:bg-blue-600' : 'bg-orange-500 hover:bg-orange-600' });
+            if (!confirmed) return;
+            try {
+                await updateDoc(doc(window.db, 'products', productId), { isVisible: !currentVisibility });
             } catch (e) {
                 console.error("Error al cambiar la visibilidad del producto: ", e);
             }
@@ -230,15 +256,8 @@
         };
 
         window.deleteProduct = async (productId) => {
-            const confirmed = await showConfirmationModal({
-                title: 'Eliminar Producto',
-                message: '¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE este producto? Esta acción no se puede deshacer.',
-                confirmText: 'Sí, Eliminar',
-                confirmClasses: 'bg-red-500 hover:bg-red-600'
-            });
-
+            const confirmed = await showConfirmationModal({ title: 'Eliminar Producto', message: '¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE este producto? Esta acción no se puede deshacer.', confirmText: 'Sí, Eliminar', confirmClasses: 'bg-red-500 hover:bg-red-600' });
             if (!confirmed) return;
-
             try {
                 await deleteDoc(doc(window.db, 'products', productId));
             } catch (e) {
@@ -260,11 +279,7 @@
                 const confirmedOrders = allOrders.filter(order => order.status === 'Confirmado');
                 const totalSales = confirmedOrders.reduce((sum, order) => sum + order.total, 0);
                 const productSales = {};
-                confirmedOrders.forEach(order => {
-                    order.items.forEach(item => {
-                        productSales[item.name] = (productSales[item.name] || 0) + item.quantity;
-                    });
-                });
+                confirmedOrders.forEach(order => { order.items.forEach(item => { productSales[item.name] = (productSales[item.name] || 0) + item.quantity; }); });
                 
                 document.getElementById('totalSales').textContent = `$${totalSales.toFixed(2)}`;
                 document.getElementById('totalOrders').textContent = confirmedOrders.length;
@@ -299,18 +314,10 @@
             window.auth = getAuth(window.app);
             
             signInAnonymously(window.auth)
-                .then(() => {
-                    console.log("Admin signed in anonymously.");
-                    setupFirestoreListeners();
-                })
+                .then(() => { setupFirestoreListeners(); })
                 .catch(async (error) => {
                     console.error("Error signing in anonymously:", error);
-                    await showConfirmationModal({
-                        title: 'Error de Conexión',
-                        message: 'No se pudo conectar a la base de datos. Por favor, revisa tu conexión a internet y la configuración de Firebase.',
-                        confirmText: 'Entendido',
-                        confirmClasses: 'bg-red-500 hover:bg-red-600'
-                    });
+                    await showConfirmationModal({ title: 'Error de Conexión', message: 'No se pudo conectar a la base de datos.', confirmText: 'Entendido', confirmClasses: 'bg-red-500 hover:bg-red-600' });
                 });
 
             document.getElementById('showDashboardBtn').onclick = () => showSection('dashboard-section');
@@ -322,15 +329,14 @@
 
             document.getElementById('productForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const productData = {
+                    name: document.getElementById('productName').value,
+                    price: parseFloat(document.getElementById('productPrice').value),
+                    description: document.getElementById('productDescription').value,
+                    image: document.getElementById('productImage').value,
+                    isVisible: document.getElementById('productIsVisible').checked
+                };
                 const productId = document.getElementById('productId').value;
-                const name = document.getElementById('productName').value;
-                const price = parseFloat(document.getElementById('productPrice').value);
-                const description = document.getElementById('productDescription').value;
-                const image = document.getElementById('productImage').value;
-                const isVisible = document.getElementById('productIsVisible').checked;
-                
-                const productData = { name, price, description, image, isVisible };
-
                 try {
                     if (productId) {
                         await updateDoc(doc(window.db, 'products', productId), productData);
@@ -347,47 +353,47 @@
         };
     </script>
 </head>
-<body class="antialiased min-h-screen flex flex-col items-center p-6">
+<body class="antialiased min-h-screen flex flex-col items-center p-4 md:p-6">
 
     <div class="w-full max-w-7xl">
-        <h1 class="text-5xl font-bold text-center mb-12">Panel de Administración</h1>
+        <h1 class="text-3xl md:text-5xl font-bold text-center mb-8 md:mb-12">Panel de Administración</h1>
         
-        <div class="flex justify-center space-x-4 mb-8">
-            <button id="showDashboardBtn" class="bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#c99a6a]">Panel</button>
-            <button id="showOrdersBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#d4b58e]">Pedidos</button>
-            <button id="showProductsBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#d4b58e]">Productos</button>
-            <button id="showClientsBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#d4b58e]">Clientes</button>
+        <div class="flex flex-wrap justify-center gap-2 md:space-x-4 mb-8">
+            <button id="showDashboardBtn" class="bg-[#d4b58e] text-[#4a2a1a] font-bold py-2 px-4 md:py-3 md:px-6 rounded-full shadow-lg hover:bg-[#c99a6a]">Panel</button>
+            <button id="showOrdersBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-2 px-4 md:py-3 md:px-6 rounded-full shadow-lg hover:bg-[#d4b58e]">Pedidos</button>
+            <button id="showProductsBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-2 px-4 md:py-3 md:px-6 rounded-full shadow-lg hover:bg-[#d4b58e]">Productos</button>
+            <button id="showClientsBtn" class="bg-[#e8d5c5] text-[#4a2a1a] font-bold py-2 px-4 md:py-3 md:px-6 rounded-full shadow-lg hover:bg-[#d4b58e]">Clientes</button>
         </div>
 
         <div>
-            <section id="dashboard-section" class="content-section bg-white rounded-2xl shadow-xl p-8 mb-8">
-                <h2 class="text-3xl font-bold mb-6">Reporte de Ventas (Pedidos Confirmados)</h2>
+            <section id="dashboard-section" class="content-section bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-8">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6">Reporte de Ventas (Pedidos Confirmados)</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-xl font-semibold">Ventas Totales</h3><p id="totalSales" class="mt-2 text-4xl font-bold">$0.00</p></div>
-                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-xl font-semibold">Pedidos Confirmados</h3><p id="totalOrders" class="mt-2 text-4xl font-bold">0</p></div>
-                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-xl font-semibold">Producto Más Vendido</h3><p id="mostSoldProduct" class="mt-2 text-2xl font-bold">N/A</p></div>
+                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Ventas Totales</h3><p id="totalSales" class="mt-2 text-3xl md:text-4xl font-bold">$0.00</p></div>
+                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Pedidos Confirmados</h3><p id="totalOrders" class="mt-2 text-3xl md:text-4xl font-bold">0</p></div>
+                    <div class="bg-gray-100 p-6 rounded-xl"><h3 class="text-lg md:text-xl font-semibold">Producto Más Vendido</h3><p id="mostSoldProduct" class="mt-2 text-xl md:text-2xl font-bold">N/A</p></div>
                 </div>
             </section>
             
-            <section id="orders-section" class="content-section bg-white rounded-2xl shadow-xl p-8 mb-8">
+            <section id="orders-section" class="content-section bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-8">
                 <div class="mb-12">
-                    <h2 class="text-3xl font-bold mb-6">Pedidos Pendientes</h2>
-                    <div class="overflow-x-auto"><table class="w-full text-left">
-                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4">Acción</th></tr></thead>
+                    <h2 class="text-2xl md:text-3xl font-bold mb-6">Pedidos Pendientes</h2>
+                    <table class="w-full text-left responsive-table">
+                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4 text-right">Acciones</th></tr></thead>
                         <tbody id="pendingOrdersTableBody"></tbody>
-                    </table></div>
+                    </table>
                 </div>
                 <div>
-                    <h2 class="text-3xl font-bold mb-6">Pedidos Confirmados</h2>
-                    <div class="overflow-x-auto"><table class="w-full text-left">
-                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th></tr></thead>
+                    <h2 class="text-2xl md:text-3xl font-bold mb-6">Pedidos Confirmados</h2>
+                    <table class="w-full text-left responsive-table">
+                        <thead><tr class="bg-gray-200"><th class="p-4">Folio</th><th class="p-4">Cliente</th><th class="p-4">Fecha</th><th class="p-4">Productos</th><th class="p-4">Total</th><th class="p-4 text-right">Acciones</th></tr></thead>
                         <tbody id="confirmedOrdersTableBody"></tbody>
-                    </table></div>
+                    </table>
                 </div>
             </section>
 
-            <section id="products-section" class="content-section bg-white rounded-2xl shadow-xl p-8">
-                <h2 class="text-3xl font-bold mb-6">Gestión de Productos</h2>
+            <section id="products-section" class="content-section bg-white rounded-2xl shadow-xl p-6 md:p-8">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6">Gestión de Productos</h2>
                 <form id="productForm" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 p-6 bg-gray-50 rounded-xl border">
                     <h3 id="productFormTitle" class="col-span-full text-2xl font-semibold">Añadir Nuevo Producto</h3>
                     <input type="hidden" id="productId">
@@ -401,18 +407,18 @@
                     </div>
                     <div class="col-span-full"><button type="submit" class="w-full bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 rounded-full hover:bg-[#c99a6a]">Guardar Producto</button></div>
                 </form>
-                <div class="overflow-x-auto"><table class="w-full text-left">
-                    <thead><tr class="bg-gray-200"><th class="p-4">Nombre</th><th class="p-4">Precio</th><th class="p-4">Visibilidad</th><th class="p-4">Acciones</th></tr></thead>
+                <table class="w-full text-left responsive-table">
+                    <thead><tr class="bg-gray-200"><th class="p-4">Nombre</th><th class="p-4">Precio</th><th class="p-4">Visibilidad</th><th class="p-4 text-right">Acciones</th></tr></thead>
                     <tbody id="productsTableBody"></tbody>
-                </table></div>
+                </table>
             </section>
             
-            <section id="clients-section" class="content-section bg-white rounded-2xl shadow-xl p-8">
-                <h2 class="text-3xl font-bold mb-6">Gestión de Clientes</h2>
-                <div class="overflow-x-auto"><table class="w-full text-left">
+            <section id="clients-section" class="content-section bg-white rounded-2xl shadow-xl p-6 md:p-8">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6">Gestión de Clientes</h2>
+                <table class="w-full text-left responsive-table">
                     <thead><tr class="bg-gray-200"><th class="p-4">Nombre</th><th class="p-4">Correo</th><th class="p-4">Teléfono</th></tr></thead>
                     <tbody id="clientsTableBody"></tbody>
-                </table></div>
+                </table>
             </section>
         </div>
     </div>
@@ -427,5 +433,5 @@
             </div>
         </div>
     </div>
-    </body>
+</body>
 </html>
