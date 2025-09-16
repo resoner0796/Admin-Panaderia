@@ -171,7 +171,6 @@
             window.db = getFirestore(window.app);
             window.auth = getAuth(window.app);
             
-            // **CAMBIO: Iniciar sesión anónimamente para obtener acceso a la BD**
             signInAnonymously(window.auth)
                 .then(() => {
                     console.log("Admin signed in anonymously.");
@@ -253,7 +252,11 @@
                     <div><label for="productName" class="block mb-2">Nombre</label><input type="text" id="productName" class="w-full p-3 rounded-lg border" required></div>
                     <div><label for="productPrice" class="block mb-2">Precio</label><input type="number" id="productPrice" class="w-full p-3 rounded-lg border" step="0.01" required></div>
                     <div class="col-span-full"><label for="productDescription" class="block mb-2">Descripción</label><textarea id="productDescription" class="w-full p-3 rounded-lg border" rows="3" required></textarea></div>
-                    <div class="col-span-full"><label for="productImage" class="block mb-2">URL de Imagen</label><input type="url" id="productImage" class="w-full p-3 rounded-lg border" required></div>
+                    
+                    <div class="col-span-full">
+                        <label for="productImage" class="block mb-2">Ruta de la Imagen</label>
+                        <input type="text" id="productImage" class="w-full p-3 rounded-lg border" placeholder="Ej: Pan/Pandemuerto.jpg" required>
+                    </div>
                     <div class="col-span-full"><button type="submit" class="w-full bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 rounded-full hover:bg-[#c99a6a]">Guardar Producto</button></div>
                 </form>
                 <div class="overflow-x-auto"><table class="w-full text-left">
