@@ -84,7 +84,10 @@
         window.db = null;
         window.auth = null;
         window.products = [];
-        const userCache = {}; // ** CAMBIO: Caché unificado para datos de usuario (incluyendo teléfono) **
+        
+        // ** CAMBIO: Listas globales para mantener los datos más recientes **
+        let allOrdersData = [];
+        let allClientsData = [];
 
         const firebaseConfig = {
           apiKey: "AIzaSyAhxUAUO4Z0klgk_Fcx2uoTbSOIpSXEvqk",
@@ -110,40 +113,21 @@
             });
         }
         
-        // ** CAMBIO: Función unificada para obtener datos del usuario y guardarlos en caché **
-        async function getUserData(userId) {
-            if (userCache[userId]) {
-                return userCache[userId];
-            }
-            try {
-                const userDoc = await getDoc(doc(window.db, 'users', userId));
-                if (userDoc.exists()) {
-                    const userData = userDoc.data();
-                    userCache[userId] = userData;
-                    return userData;
-                }
-                userCache[userId] = { phone: 'No Encontrado' };
-                return userCache[userId];
-            } catch (e) {
-                console.error("Error fetching user data:", e);
-                userCache[userId] = { phone: 'Error' };
-                return userCache[userId];
-            }
-        }
-
-        async function renderOrders(orders) {
+        // ** CAMBIO: La función de renderizado de pedidos ahora recibe la lista de clientes **
+        function renderOrders(orders, clients) {
             const pendingOrdersBody = document.getElementById('pendingOrdersTableBody');
             const confirmedOrdersBody = document.getElementById('confirmedOrdersTableBody');
             
-            const uniqueUserIds = [...new Set(orders.map(o => o.userId))];
-            await Promise.all(uniqueUserIds.map(id => getUserData(id)));
-            
+            // Creamos un mapa de búsqueda para encontrar teléfonos fácilmente
+            const clientMap = new Map(clients.map(client => [client.id, client]));
+
             const pendingOrders = orders.filter(order => order.status === 'Recibido');
             const confirmedOrders = orders.filter(order => order.status === 'Confirmado');
 
             const renderRow = (order, isConfirmed = false) => {
                 const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
-                const phone = userCache[order.userId]?.phone || 'N/A';
+                const clientInfo = clientMap.get(order.userId);
+                const phone = clientInfo?.phone || 'N/A';
                 
                 let deliveryInfoHtml = '<span class="text-gray-500">N/A</span>';
                 if (order.delivery) {
@@ -306,12 +290,11 @@
             unsubscribes = [];
 
             const ordersQuery = query(collection(window.db, 'orders'), orderBy('timestamp', 'desc'));
-            const unsubOrders = onSnapshot(ordersQuery, async (snapshot) => {
-                const allOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-                
-                await renderOrders(allOrders);
+            const unsubOrders = onSnapshot(ordersQuery, (snapshot) => {
+                allOrdersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                renderOrders(allOrdersData, allClientsData); // Re-render orders when they change
 
-                const confirmedOrders = allOrders.filter(order => order.status === 'Confirmado');
+                const confirmedOrders = allOrdersData.filter(order => order.status === 'Confirmado');
                 const totalProductSales = confirmedOrders.reduce((sum, order) => sum + (order.subtotal || (order.total - (order.delivery?.cost || 0))), 0);
                 const totalShippingRevenue = confirmedOrders.reduce((sum, order) => sum + (order.delivery?.cost || 0), 0);
                 const productSales = {};
@@ -334,14 +317,10 @@
             unsubscribes.push(unsubProducts);
             
             const clientsQuery = query(collection(window.db, 'users'));
-            // ** CAMBIO: La función de clientes ahora también llena el caché de usuarios **
             const unsubClients = onSnapshot(clientsQuery, (snapshot) => {
-                const clients = snapshot.docs.map(doc => {
-                    const clientData = { id: doc.id, ...doc.data() };
-                    userCache[doc.id] = clientData; // <-- Llena el caché
-                    return clientData;
-                });
-                renderClients(clients);
+                allClientsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderClients(allClientsData);
+                renderOrders(allOrdersData, allClientsData); // ** CAMBIO: Re-render orders when client data arrives/changes **
             });
             unsubscribes.push(unsubClients);
         }
