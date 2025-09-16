@@ -15,8 +15,8 @@
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, updateDoc, query, orderBy, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables
         window.app = null;
@@ -34,7 +34,6 @@
           appId: "1:200423925424:web:84148451383055c930fd75"
         };
        
-        // Renders the orders table
         function renderOrders(orders) {
             const ordersTableBody = document.getElementById('ordersTableBody');
             ordersTableBody.innerHTML = '';
@@ -58,7 +57,6 @@
             });
         }
         
-        // Renders the products table for management
         function renderProducts(products) {
             const productsTableBody = document.getElementById('productsTableBody');
             productsTableBody.innerHTML = '';
@@ -82,7 +80,6 @@
             });
         }
         
-        // Renders the clients table
         function renderClients(clients) {
             const clientsTableBody = document.getElementById('clientsTableBody');
             clientsTableBody.innerHTML = '';
@@ -117,7 +114,6 @@
         window.deleteProduct = async (productId) => {
             if (!confirm('¿Estás seguro de que quieres eliminar este producto?')) return;
             try {
-                // **MEJORA: Ruta simplificada a la colección de productos**
                 await deleteDoc(doc(window.db, 'products', productId));
             } catch (e) {
                 console.error("Error al eliminar producto: ", e);
@@ -127,16 +123,14 @@
         let unsubscribes = [];
         function setupFirestoreListeners() {
             if (!window.db) return;
-            unsubscribes.forEach(unsub => unsub()); // Limpiar listeners anteriores
+            unsubscribes.forEach(unsub => unsub());
             unsubscribes = [];
 
-            // **MEJORA: Escuchar directamente la colección 'orders' - mucho más eficiente**
             const ordersQuery = query(collection(window.db, 'orders'), orderBy('timestamp', 'desc'));
             const unsubOrders = onSnapshot(ordersQuery, (snapshot) => {
                 const allOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 renderOrders(allOrders);
 
-                // Update sales report
                 const totalSales = allOrders.reduce((sum, order) => sum + order.total, 0);
                 const productSales = {};
                 allOrders.forEach(order => {
@@ -152,7 +146,6 @@
             });
             unsubscribes.push(unsubOrders);
             
-            // **MEJORA: Escuchar directamente la colección 'products'**
             const productsQuery = query(collection(window.db, 'products'), orderBy('name'));
             const unsubProducts = onSnapshot(productsQuery, (snapshot) => {
                 window.products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -160,7 +153,6 @@
             });
             unsubscribes.push(unsubProducts);
             
-            // **MEJORA: Escuchar directamente la colección 'users' para obtener los clientes**
             const clientsQuery = query(collection(window.db, 'users'));
             const unsubClients = onSnapshot(clientsQuery, (snapshot) => {
                 const clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -179,32 +171,16 @@
             window.db = getFirestore(window.app);
             window.auth = getAuth(window.app);
             
-            const adminLogin = document.getElementById('adminLogin');
-            const adminPanel = document.getElementById('adminPanel');
-
-            onAuthStateChanged(window.auth, (user) => {
-                if (user) {
-                    adminLogin.style.display = 'none';
-                    adminPanel.style.display = 'block';
+            // **CAMBIO: Iniciar sesión anónimamente para obtener acceso a la BD**
+            signInAnonymously(window.auth)
+                .then(() => {
+                    console.log("Admin signed in anonymously.");
                     setupFirestoreListeners();
-                } else {
-                    adminLogin.style.display = 'flex';
-                    adminPanel.style.display = 'none';
-                    unsubscribes.forEach(unsub => unsub());
-                }
-            });
-
-            document.getElementById('loginForm').addEventListener('submit', (e) => {
-                e.preventDefault();
-                const email = document.getElementById('adminEmail').value;
-                const password = document.getElementById('adminPassword').value;
-                signInWithEmailAndPassword(window.auth, email, password)
-                    .catch(error => {
-                        document.getElementById('loginError').textContent = 'Error: Credenciales incorrectas.';
-                    });
-            });
-
-            document.getElementById('logoutBtn').addEventListener('click', () => signOut(window.auth));
+                })
+                .catch((error) => {
+                    console.error("Error signing in anonymously:", error);
+                    alert("No se pudo conectar a la base de datos. Revisa la consola para ver los errores.");
+                });
 
             document.getElementById('showDashboardBtn').onclick = () => showSection('dashboard-section');
             document.getElementById('showOrdersBtn').onclick = () => showSection('orders-section');
@@ -224,9 +200,9 @@
                 const productData = { name, price, description, image };
 
                 try {
-                    if (productId) { // Editar producto existente
+                    if (productId) {
                         await updateDoc(doc(window.db, 'products', productId), productData);
-                    } else { // Crear producto nuevo
+                    } else {
                         await addDoc(collection(window.db, 'products'), productData);
                     }
                     document.getElementById('productForm').reset();
@@ -241,29 +217,8 @@
 </head>
 <body class="antialiased min-h-screen flex flex-col items-center p-6">
 
-    <div id="adminLogin" class="fixed inset-0 bg-gray-200 flex items-center justify-center z-50">
-        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
-            <h2 class="text-3xl font-bold text-center mb-6">Acceso de Administrador</h2>
-            <form id="loginForm">
-                <div class="mb-4">
-                    <label for="adminEmail" class="block font-semibold mb-2">Correo</label>
-                    <input type="email" id="adminEmail" class="w-full p-3 rounded-lg border-2" required>
-                </div>
-                <div class="mb-6">
-                    <label for="adminPassword" class="block font-semibold mb-2">Contraseña</label>
-                    <input type="password" id="adminPassword" class="w-full p-3 rounded-lg border-2" required>
-                </div>
-                <p id="loginError" class="text-red-500 text-center mb-4"></p>
-                <button type="submit" class="w-full bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 rounded-full hover:bg-[#c99a6a]">Entrar</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="adminPanel" class="w-full max-w-7xl" style="display: none;">
-        <div class="flex justify-between items-center mb-12">
-            <h1 class="text-5xl font-bold">Panel de Administración</h1>
-            <button id="logoutBtn" class="bg-red-500 text-white font-bold py-2 px-6 rounded-full shadow-lg hover:bg-red-700">Cerrar Sesión</button>
-        </div>
+    <div class="w-full max-w-7xl">
+        <h1 class="text-5xl font-bold text-center mb-12">Panel de Administración</h1>
         
         <div class="flex justify-center space-x-4 mb-8">
             <button id="showDashboardBtn" class="bg-[#d4b58e] text-[#4a2a1a] font-bold py-3 px-6 rounded-full shadow-lg hover:bg-[#c99a6a]">Panel</button>
