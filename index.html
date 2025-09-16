@@ -84,7 +84,7 @@
         window.db = null;
         window.auth = null;
         window.products = [];
-        const userPhoneCache = {}; 
+        const userCache = {}; // ** CAMBIO: Caché unificado para datos de usuario (incluyendo teléfono) **
 
         const firebaseConfig = {
           apiKey: "AIzaSyAhxUAUO4Z0klgk_Fcx2uoTbSOIpSXEvqk",
@@ -110,23 +110,24 @@
             });
         }
         
-        async function getUserPhone(userId) {
-            if (userPhoneCache[userId]) {
-                return userPhoneCache[userId];
+        // ** CAMBIO: Función unificada para obtener datos del usuario y guardarlos en caché **
+        async function getUserData(userId) {
+            if (userCache[userId]) {
+                return userCache[userId];
             }
             try {
                 const userDoc = await getDoc(doc(window.db, 'users', userId));
                 if (userDoc.exists()) {
-                    const phone = userDoc.data().phone || 'N/A';
-                    userPhoneCache[userId] = phone;
-                    return phone;
+                    const userData = userDoc.data();
+                    userCache[userId] = userData;
+                    return userData;
                 }
-                userPhoneCache[userId] = 'No Encontrado';
-                return 'No Encontrado';
+                userCache[userId] = { phone: 'No Encontrado' };
+                return userCache[userId];
             } catch (e) {
-                console.error("Error fetching user phone:", e);
-                userPhoneCache[userId] = 'Error';
-                return 'Error';
+                console.error("Error fetching user data:", e);
+                userCache[userId] = { phone: 'Error' };
+                return userCache[userId];
             }
         }
 
@@ -135,14 +136,14 @@
             const confirmedOrdersBody = document.getElementById('confirmedOrdersTableBody');
             
             const uniqueUserIds = [...new Set(orders.map(o => o.userId))];
-            await Promise.all(uniqueUserIds.map(id => getUserPhone(id)));
+            await Promise.all(uniqueUserIds.map(id => getUserData(id)));
             
             const pendingOrders = orders.filter(order => order.status === 'Recibido');
             const confirmedOrders = orders.filter(order => order.status === 'Confirmado');
 
             const renderRow = (order, isConfirmed = false) => {
                 const itemsList = order.items.map(item => `${item.name} (x${item.quantity})`).join(', ');
-                const phone = userPhoneCache[order.userId] || 'N/A';
+                const phone = userCache[order.userId]?.phone || 'N/A';
                 
                 let deliveryInfoHtml = '<span class="text-gray-500">N/A</span>';
                 if (order.delivery) {
@@ -308,7 +309,6 @@
             const unsubOrders = onSnapshot(ordersQuery, async (snapshot) => {
                 const allOrders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 
-                // ** CAMBIO CLAVE: Se espera a que la función que dibuja la tabla termine por completo **
                 await renderOrders(allOrders);
 
                 const confirmedOrders = allOrders.filter(order => order.status === 'Confirmado');
@@ -334,8 +334,13 @@
             unsubscribes.push(unsubProducts);
             
             const clientsQuery = query(collection(window.db, 'users'));
+            // ** CAMBIO: La función de clientes ahora también llena el caché de usuarios **
             const unsubClients = onSnapshot(clientsQuery, (snapshot) => {
-                const clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const clients = snapshot.docs.map(doc => {
+                    const clientData = { id: doc.id, ...doc.data() };
+                    userCache[doc.id] = clientData; // <-- Llena el caché
+                    return clientData;
+                });
                 renderClients(clients);
             });
             unsubscribes.push(unsubClients);
