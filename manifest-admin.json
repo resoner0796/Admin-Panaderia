@@ -1,0 +1,27 @@
+{
+  "name": "Panel Admin - Panadería",
+  "short_name": "Admin Panel",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f7f3f0",
+  "theme_color": "#4a2a1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "maskable-icon.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    }
+  ]
+}
